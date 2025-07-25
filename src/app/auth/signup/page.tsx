@@ -14,14 +14,25 @@ interface SignUpData {
   serviceType: string
 }
 
+// Updated to match the AuthContext SignUpResult
 interface SignUpResult {
   success: boolean
   message?: string
   user?: {
     id: string
     email: string
+    full_name: string
     role: string
-  }
+    phone?: string
+    location?: string
+    bio?: string
+    avatar_url?: string
+    resume_url?: string
+    company_name?: string
+    service_type?: string
+    created_at?: string
+    updated_at?: string
+  } | null
 }
 
 export default function SignUp() {
@@ -128,7 +139,8 @@ export default function SignUp() {
     }
 
     try {
-      const result: SignUpResult = await signUp(formData.email, formData.password, {
+      // Remove the type annotation to let TypeScript infer the correct type from AuthContext
+      const result = await signUp(formData.email, formData.password, {
         fullName: formData.fullName,
         role: formData.role,
         phone: formData.phone,
