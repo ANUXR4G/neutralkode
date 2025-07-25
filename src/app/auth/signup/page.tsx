@@ -21,6 +21,7 @@ export default function SignUp() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [selectedRole, setSelectedRole] = useState('job_seeker')
 
   const { signUp } = useAuth()
@@ -41,7 +42,7 @@ export default function SignUp() {
         'Get job recommendations',
         'Save favorite jobs'
       ],
-      dashboardAccess: '/user/dashboard',
+      dashboardAccess: '/profile',
       additionalFields: []
     },
     {
@@ -58,7 +59,7 @@ export default function SignUp() {
         'Analytics & insights',
         'Team collaboration tools'
       ],
-      dashboardAccess: '/company/dashboard',
+      dashboardAccess: '/profile',
       additionalFields: ['companyName']
     },
     {
@@ -75,7 +76,7 @@ export default function SignUp() {
         'Client relationship management',
         'Revenue tracking'
       ],
-      dashboardAccess: '/vendor/dashboard',
+      dashboardAccess: '/profile',
       additionalFields: ['serviceType']
     }
   ]
@@ -84,6 +85,7 @@ export default function SignUp() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setSuccess('')
 
     // Validation
     if (formData.password !== formData.confirmPassword) {
@@ -116,18 +118,23 @@ export default function SignUp() {
         serviceType: formData.serviceType
       })
 
-      // Use returned user role if available, fallback to submitted role
-      const userRole = result?.user?.role ?? formData.role
-      const destRole = roles.find(r => r.id === userRole)
-      if (destRole) {
-        setTimeout(() => {
-          router.push(destRole.dashboardAccess)
-        }, 500)
-      } else {
-        setError('Signup succeeded, but role unknown — please contact support.')
+      if (result.success) {
+        if (result.message) {
+          // Email confirmation required
+          setSuccess(result.message)
+        } else if (result.user) {
+          // User created and logged in successfully
+          setSuccess('Account created successfully! Redirecting to your profile...')
+          setTimeout(() => {
+            router.push('/profile')
+          }, 1500)
+        } else {
+          // Account created but needs confirmation
+          setSuccess('Account created successfully! Please check your email to confirm your account.')
+        }
       }
     } catch (error: any) {
-      setError(error?.message || 'Signup failed.')
+      setError(error?.message || 'Signup failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -253,6 +260,12 @@ export default function SignUp() {
                 {error && (
                   <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
                     {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className="bg-green-50 border border-green-200 text-green-600 px-4 py-3 rounded-md text-sm">
+                    {success}
                   </div>
                 )}
 
