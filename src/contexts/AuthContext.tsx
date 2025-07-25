@@ -18,6 +18,28 @@ type Profile = {
   updated_at?: string
 }
 
+// Job structure
+type Job = {
+  id?: string
+  title: string
+  description: string
+  company_id: string
+  location: string
+  job_type: 'full_time' | 'part_time' | 'contract' | 'freelance' | 'internship'
+  salary_min?: number
+  salary_max?: number
+  currency?: string
+  experience_level: 'entry' | 'mid' | 'senior' | 'executive'
+  skills_required: string[]
+  benefits?: string[]
+  remote_work_available: boolean
+  application_deadline?: string
+  is_active: boolean
+  applications_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
 // Enhanced Company data structure
 type CompanyData = {
   id: string
@@ -131,7 +153,13 @@ interface SignUpResult {
   user?: UserData | null
 }
 
-// Enhanced AuthContextType with company-specific methods
+interface JobPostResult {
+  success: boolean
+  message?: string
+  job?: Job
+}
+
+// Enhanced AuthContextType with job management methods
 type AuthContextType = {
   user: UserData | null
   profile: Profile | null
@@ -146,6 +174,10 @@ type AuthContextType = {
   updateJobSeekerProfile: (updates: Partial<JobSeekerData>) => Promise<void>
   refreshProfile: () => Promise<void>
   uploadFile: (file: File, bucket: string, path: string) => Promise<string>
+  createJob: (jobData: Omit<Job, 'id' | 'company_id' | 'created_at' | 'updated_at'>) => Promise<JobPostResult>
+  updateJob: (jobId: string, updates: Partial<Job>) => Promise<void>
+  deleteJob: (jobId: string) => Promise<void>
+  getCompanyJobs: () => Promise<Job[]>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -213,6 +245,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     return publicUrl
   }, [supabase])
+
+  // Job management methods
+  const createJob = useCallback(async (jobData: Omit<Job, 'id' | 'company_id' | 'created_at' | 'updated_at'>): Promise<JobPostResult> => {
+    if (!user || !user.company) {
+      throw new Error('No company profile found')
+    }
+
+    try {
+      const jobPayload = {
+        ...jobData,
+        company_id: user.company.id,
+        is_active: true,
+        applications_count: 0
+      }
+
+      const { data: job, error } = await supabase
+        .from('jobs')
+        .insert(jobPayload)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Job creation error:', error)
+        return { success: false, message: error.message }
+      }
+
+      return { 
+        success: true, 
+        message: 'Job posted successfully!',
+        job: job as Job 
+      }
+    } catch (error) {
+      console.error('Error creating job:', error)
+      return { 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Failed to create job' 
+      }
+    }
+  }, [user, supabase])
+
+  const updateJob = useCallback(async (jobId: string, updates: Partial<Job>) => {
+    if (!user || !user.company) throw new Error('No company profile found')
+
+    const updatedData = { ...updates, updated_at: new Date().toISOString() }
+
+    const { error } = await supabase
+      .from('jobs')
+      .update(updatedData)
+      .eq('id', jobId)
+      .eq('company_id', user.company.id)
+
+    if (error) throw new Error(error.message)
+  }, [user, supabase])
+
+  const deleteJob = useCallback(async (jobId: string) => {
+    if (!user || !user.company) throw new Error('No company profile found')
+
+    const { error } = await supabase
+      .from('jobs')
+      .delete()
+      .eq('id', jobId)
+      .eq('company_id', user.company.id)
+
+    if (error) throw new Error(error.message)
+  }, [user, supabase])
+
+  const getCompanyJobs = useCallback(async (): Promise<Job[]> => {
+    if (!user || !user.company) return []
+
+    const { data: jobs, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('company_id', user.company.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching company jobs:', error)
+      return []
+    }
+
+    return jobs as Job[]
+  }, [user, supabase])
 
   // Enhanced profile creation with complete role-specific data
   const createProfile = useCallback(async (authUser: User, userData: SignUpData): Promise<UserData> => {
@@ -715,7 +829,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateVendorProfile,
       updateJobSeekerProfile,
       refreshProfile,
-      uploadFile
+      uploadFile,
+      createJob,
+      updateJob,
+      deleteJob,
+      getCompanyJobs
     }}>
       {children}
     </AuthContext.Provider>
@@ -729,3 +847,6 @@ export function useAuth() {
   }
   return context
 }
+
+// Export types for use in components
+export type { Job, UserData, Profile, CompanyData, VendorData, JobSeekerData }
