@@ -159,7 +159,7 @@ interface JobPostResult {
   job?: Job
 }
 
-// Enhanced AuthContextType with job management methods
+// Enhanced AuthContextType with job management methods and company admin helpers
 type AuthContextType = {
   user: UserData | null
   profile: Profile | null
@@ -170,6 +170,7 @@ type AuthContextType = {
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
   updateCompanyProfile: (updates: Partial<CompanyData>) => Promise<void>
+  createCompanyProfile: (companyData: Partial<CompanyData>) => Promise<CompanyData>
   updateVendorProfile: (updates: Partial<VendorData>) => Promise<void>
   updateJobSeekerProfile: (updates: Partial<JobSeekerData>) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -178,6 +179,9 @@ type AuthContextType = {
   updateJob: (jobId: string, updates: Partial<Job>) => Promise<void>
   deleteJob: (jobId: string) => Promise<void>
   getCompanyJobs: () => Promise<Job[]>
+  // Company admin helpers for profile pages
+  isCompanyAdmin: (companyId: string) => boolean
+  getUserCompanyRole: (companyId: string) => Promise<{ position: string, is_admin: boolean } | null>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -231,20 +235,144 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Company admin helpers
+  const isCompanyAdmin = useCallback((companyId: string) => {
+    return !!(user?.company && user.company.id === companyId && user.company.is_admin)
+  }, [user])
+
+  const getUserCompanyRole = useCallback(async (companyId: string) => {
+    if (!user?.profile?.id) return null
+    
+    const { data, error } = await supabase
+      .from('company_users')
+      .select('position, is_admin')
+      .eq('company_id', companyId)
+      .eq('id', user.profile.id)
+      .single()
+    
+    if (error || !data) return null
+    return { position: data.position, is_admin: data.is_admin }
+  }, [supabase, user])
+
   // File upload utility
   const uploadFile = useCallback(async (file: File, bucket: string, path: string): Promise<string> => {
+    console.log('🔄 Uploading file:', { file: file.name, bucket, path })
     const { data, error } = await supabase.storage
       .from(bucket)
       .upload(path, file, { upsert: true })
     
-    if (error) throw error
+    if (error) {
+      console.error('❌ Upload error:', error)
+      throw error
+    }
     
     const { data: { publicUrl } } = supabase.storage
       .from(bucket)
       .getPublicUrl(path)
     
+    console.log('✅ File uploaded successfully:', publicUrl)
     return publicUrl
   }, [supabase])
+
+  // Create company profile method (ADDED)
+  const createCompanyProfile = useCallback(async (companyData: Partial<CompanyData>): Promise<CompanyData> => {
+    if (!user) throw new Error('No user found')
+    if (!companyData.name || companyData.name.trim() === '') {
+      throw new Error('Company name is required')
+    }
+  
+    console.log('🏢 Creating company profile for user:', user.profile.id)
+  
+    // First check if user is already linked to a company
+    const { data: existingLink, error: linkCheckError } = await supabase
+      .from('company_users')
+      .select('company_id, companies(*)')
+      .eq('id', user.profile.id)
+      .single()
+  
+    if (!linkCheckError && existingLink) {
+      console.log('✅ User already has company, returning existing:', existingLink.companies)
+      const existingCompany = {
+        ...existingLink.companies,
+        position: 'Admin',
+        is_admin: true
+      } as CompanyData
+      
+      // Update local state
+      const newUser = { ...user, company: existingCompany }
+      setUser(newUser)
+      setCachedUserData(newUser)
+      
+      return existingCompany
+    }
+  
+    const companyPayload = {
+      name: companyData.name.trim(),
+      description: companyData.description?.trim() || null,
+      website: companyData.website?.trim() || null,
+      industry: companyData.industry?.trim() || null,
+      company_size: companyData.company_size?.trim() || null,
+      location: companyData.location?.trim() || null,
+      headquarters: companyData.headquarters?.trim() || null,
+      founded_year: companyData.founded_year || null,
+      is_verified: false,
+      benefits: Array.isArray(companyData.benefits) ? companyData.benefits : [],
+      company_culture: companyData.company_culture?.trim() || null,
+      social_media: companyData.social_media || {},
+      employee_count_range: companyData.employee_count_range?.trim() || null
+    }
+  
+    // Create company
+    const { data: newCompany, error: companyError } = await supabase
+      .from('companies')
+      .insert(companyPayload)
+      .select()
+      .single()
+  
+    if (companyError) {
+      console.error('❌ Company creation error:', companyError)
+      throw new Error(`Company creation failed: ${companyError.message}`)
+    }
+  
+    console.log('✅ Company created:', newCompany.id)
+  
+    // Create company-user relationship with UPSERT to handle duplicates
+    const companyUserPayload = {
+      id: user.profile.id,
+      company_id: newCompany.id,
+      position: 'Admin',
+      is_admin: true
+    }
+  
+    console.log('👥 Creating company-user link:', companyUserPayload)
+  
+    const { error: linkError } = await supabase
+      .from('company_users')
+      .upsert(companyUserPayload, { 
+        onConflict: 'id,company_id',
+        ignoreDuplicates: false 
+      })
+  
+    if (linkError) {
+      console.error('❌ Company user link error:', linkError)
+      // Clean up the created company
+      await supabase.from('companies').delete().eq('id', newCompany.id)
+      throw new Error(`Failed to link user to company: ${linkError.message}`)
+    }
+  
+    const companyWithRole = {
+      ...newCompany,
+      position: 'Admin',
+      is_admin: true
+    } as CompanyData
+  
+    const newUser = { ...user, company: companyWithRole }
+    setUser(newUser)
+    setCachedUserData(newUser)
+  
+    return companyWithRole
+  }, [user, supabase, setCachedUserData, setUser])
+  
 
   // Job management methods
   const createJob = useCallback(async (jobData: Omit<Job, 'id' | 'company_id' | 'created_at' | 'updated_at'>): Promise<JobPostResult> => {
@@ -328,7 +456,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return jobs as Job[]
   }, [user, supabase])
 
-  // Enhanced profile creation with complete role-specific data
+  // Enhanced profile creation with proper company data storage
   const createProfile = useCallback(async (authUser: User, userData: SignUpData): Promise<UserData> => {
     console.log('🔄 Creating profile for user:', authUser.id)
     
@@ -355,8 +483,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let roleSpecificData = null
 
-    // Handle role-specific data creation
+    // Handle role-specific data creation with proper company setup
     if (userData.role === 'company' && userData.companyName) {
+      // Check if company already exists by name
       const { data: existingCompanies } = await supabase
         .from('companies')
         .select('*')
@@ -366,33 +495,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let company = existingCompanies?.[0]
       
       if (!company) {
+        // Create new company with all fields
+        const companyPayload = {
+          name: userData.companyName,
+          description: userData.companyDescription || null,
+          website: userData.companyWebsite || null,
+          industry: userData.companyIndustry || null,
+          company_size: userData.companySize || null,
+          location: userData.location || null,
+          headquarters: userData.location || null,
+          is_verified: false,
+          benefits: [],
+          company_culture: null,
+          social_media: {},
+          employee_count_range: userData.companySize || null,
+          founded_year: null
+        }
+
+        console.log('🏢 Creating company with payload:', companyPayload)
+
         const { data: newCompany, error: companyError } = await supabase
           .from('companies')
-          .insert({
-            name: userData.companyName,
-            description: userData.companyDescription,
-            website: userData.companyWebsite,
-            industry: userData.companyIndustry,
-            company_size: userData.companySize,
-            is_verified: false,
-            benefits: [],
-            social_media: {}
-          })
+          .insert(companyPayload)
           .select()
           .single()
 
-        if (companyError) throw new Error(`Company creation failed: ${companyError.message}`)
+        if (companyError) {
+          console.error('❌ Company creation error:', companyError)
+          throw new Error(`Company creation failed: ${companyError.message}`)
+        }
+        
+        console.log('✅ Company created successfully:', newCompany)
         company = newCompany
       }
 
-      await supabase
+      // Create company_users relationship
+      const companyUserPayload = {
+        id: profile.id,
+        company_id: company.id,
+        position: userData.position || 'Admin',
+        is_admin: true
+      }
+
+      console.log('👥 Creating company user relationship:', companyUserPayload)
+
+      const { error: linkError } = await supabase
         .from('company_users')
-        .insert({
-          id: profile.id,
-          company_id: company.id,
-          position: userData.position || 'Admin',
-          is_admin: true
-        })
+        .insert(companyUserPayload)
+
+      if (linkError) {
+        console.error('❌ Company user link error:', linkError)
+        throw new Error(`Failed to link user to company: ${linkError.message}`)
+      }
+
+      console.log('✅ Company user relationship created successfully')
 
       roleSpecificData = { 
         ...company, 
@@ -401,29 +557,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } as CompanyData
 
     } else if (userData.role === 'vendor' && userData.vendorName && userData.serviceType) {
+      const vendorPayload = {
+        name: userData.vendorName,
+        service_type: userData.serviceType,
+        description: userData.vendorDescription || null,
+        contact_email: userData.contactEmail || authUser.email,
+        contact_phone: userData.contactPhone || null,
+        website: userData.vendorWebsite || null,
+        specializations: userData.specializations || [],
+        years_experience: userData.yearsExperience || 0,
+        portfolio_url: userData.portfolioUrl || null,
+        certifications: userData.certifications || [],
+        pricing_model: userData.pricingModel || null,
+        availability_hours: userData.availabilityHours || null,
+        is_active: true
+      }
+
       const { data: vendor, error: vendorError } = await supabase
         .from('vendors')
-        .insert({
-          name: userData.vendorName,
-          service_type: userData.serviceType,
-          description: userData.vendorDescription,
-          contact_email: userData.contactEmail || authUser.email,
-          contact_phone: userData.contactPhone,
-          website: userData.vendorWebsite,
-          specializations: userData.specializations || [],
-          years_experience: userData.yearsExperience || 0,
-          portfolio_url: userData.portfolioUrl,
-          certifications: userData.certifications || [],
-          pricing_model: userData.pricingModel,
-          availability_hours: userData.availabilityHours,
-          is_active: true
-        })
+        .insert(vendorPayload)
         .select()
         .single()
 
-      if (vendorError) throw new Error(`Vendor creation failed: ${vendorError.message}`)
+      if (vendorError) {
+        console.error('❌ Vendor creation error:', vendorError)
+        throw new Error(`Vendor creation failed: ${vendorError.message}`)
+      }
 
-      await supabase
+      const { error: linkError } = await supabase
         .from('vendor_users')
         .insert({
           id: profile.id,
@@ -431,29 +592,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           position: userData.position || 'Owner'
         })
 
+      if (linkError) {
+        console.error('❌ Vendor user link error:', linkError)
+        throw new Error(`Failed to link user to vendor: ${linkError.message}`)
+      }
+
       roleSpecificData = { 
         ...vendor, 
         position: userData.position || 'Owner' 
       } as VendorData
 
     } else if (userData.role === 'job_seeker') {
+      const jobSeekerPayload = {
+        id: profile.id,
+        location: userData.location || null,
+        bio: userData.bio || null,
+        is_active: true,
+        skills: [],
+        certifications: [],
+        languages: [],
+        preferred_job_types: [],
+        experience_years: 0,
+        availability_status: 'available'
+      }
+
       const { data: jobSeeker, error: jobSeekerError } = await supabase
         .from('job_seekers')
-        .insert({
-          id: profile.id,
-          location: userData.location,
-          bio: userData.bio,
-          is_active: true,
-          skills: [],
-          certifications: [],
-          languages: [],
-          preferred_job_types: [],
-          experience_years: 0
-        })
+        .insert(jobSeekerPayload)
         .select()
         .single()
 
-      if (jobSeekerError) throw new Error(`Job seeker creation failed: ${jobSeekerError.message}`)
+      if (jobSeekerError) {
+        console.error('❌ Job seeker creation error:', jobSeekerError)
+        throw new Error(`Job seeker creation failed: ${jobSeekerError.message}`)
+      }
+      
       roleSpecificData = jobSeeker as JobSeekerData
     }
 
@@ -464,10 +637,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...(userData.role === 'job_seeker' && roleSpecificData && { job_seeker: roleSpecificData })
     }
 
+    console.log('🎉 Complete user profile created:', result)
     return result
   }, [supabase])
 
-  // Enhanced profile fetching with complete role-specific data
+  // Enhanced profile fetching with proper company data retrieval
   const fetchProfile = useCallback(async (authUser: User, useCache = true): Promise<UserData> => {
     console.log('🔍 Fetching profile for user:', authUser.id)
     
@@ -504,50 +678,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let roleSpecificData = null
 
-    // Fetch complete role-specific data
+    // Fetch complete role-specific data with proper queries
     if (profile.role === 'company') {
-      const { data: companyData, error } = await supabase
-        .from('companies')
+      console.log('🏢 Fetching company data for profile:', profile.id)
+      
+      // Use a more robust query to get company data
+      const { data: companyUserData, error: companyUserError } = await supabase
+        .from('company_users')
         .select(`
-          *,
-          company_users!inner(position, is_admin)
+          position,
+          is_admin,
+          companies (*)
         `)
-        .eq('company_users.id', profile.id)
+        .eq('id', profile.id)
         .single()
 
-      if (!error && companyData) {
+      if (companyUserError) {
+        console.error('❌ Company user fetch error:', companyUserError)
+        // If no company_users record exists, user might be a company without being linked
+        // Try to find companies where user is the creator (fallback)
+        const { data: companyData, error: directCompanyError } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('created_by', profile.id) // Assuming you have a created_by field
+          .single()
+
+        if (!directCompanyError && companyData) {
+          roleSpecificData = {
+            ...companyData,
+            position: 'Owner',
+            is_admin: true
+          } as CompanyData
+        }
+      } else if (companyUserData && companyUserData.companies) {
+        console.log('✅ Company data fetched successfully:', companyUserData.companies)
         roleSpecificData = {
-          ...companyData,
-          position: companyData.company_users[0]?.position,
-          is_admin: companyData.company_users[0]?.is_admin
+          ...companyUserData.companies,
+          position: companyUserData.position,
+          is_admin: companyUserData.is_admin
         } as CompanyData
       }
 
     } else if (profile.role === 'vendor') {
-      const { data: vendorData, error } = await supabase
-        .from('vendors')
+      console.log('🔧 Fetching vendor data for profile:', profile.id)
+      
+      const { data: vendorUserData, error: vendorUserError } = await supabase
+        .from('vendor_users')
         .select(`
-          *,
-          vendor_users!inner(position)
+          position,
+          vendors (*)
         `)
-        .eq('vendor_users.id', profile.id)
+        .eq('id', profile.id)
         .single()
 
-      if (!error && vendorData) {
+      if (!vendorUserError && vendorUserData && vendorUserData.vendors) {
         roleSpecificData = {
-          ...vendorData,
-          position: vendorData.vendor_users[0]?.position
+          ...vendorUserData.vendors,
+          position: vendorUserData.position
         } as VendorData
       }
 
     } else if (profile.role === 'job_seeker') {
-      const { data: jobSeekerData, error } = await supabase
+      console.log('👤 Fetching job seeker data for profile:', profile.id)
+      
+      const { data: jobSeekerData, error: jobSeekerError } = await supabase
         .from('job_seekers')
         .select('*')
         .eq('id', profile.id)
         .single()
 
-      if (!error && jobSeekerData) {
+      if (!jobSeekerError && jobSeekerData) {
         roleSpecificData = jobSeekerData as JobSeekerData
       }
     }
@@ -558,6 +758,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...(profile.role === 'vendor' && roleSpecificData && { vendor: roleSpecificData }),
       ...(profile.role === 'job_seeker' && roleSpecificData && { job_seeker: roleSpecificData })
     }
+
+    console.log('📊 Final user data structure:', result)
 
     // Cache the result
     setCachedUserData(result)
@@ -677,39 +879,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = useCallback(async (updates: Partial<Profile>) => {
     if (!user) throw new Error('No user found')
 
+    console.log('🔄 updateProfile called with:', updates)
+    console.log('🔍 Current user ID:', user.profile.id)
+
     const updatedData = { ...updates, updated_at: new Date().toISOString() }
 
-    const { error } = await supabase
+    console.log('📤 Making Supabase update call to profiles table...')
+    const { data, error } = await supabase
       .from('profiles')
       .update(updatedData)
       .eq('id', user.profile.id)
+      .select()
 
-    if (error) throw new Error(error.message)
+    if (error) {
+      console.error('❌ Supabase profile update error:', error)
+      throw new Error(error.message)
+    }
+
+    console.log('✅ Supabase profile update successful:', data)
 
     const newUser = { ...user, profile: { ...user.profile, ...updatedData } }
     setUser(newUser)
     setCachedUserData(newUser)
+    console.log('✅ Local state updated')
   }, [user, supabase, setCachedUserData])
 
-  const updateCompanyProfile = useCallback(async (updates: Partial<CompanyData>) => {
-    if (!user || !user.company) throw new Error('No company profile found')
-
-    const updatedData = { ...updates, updated_at: new Date().toISOString() }
-
-    const { error } = await supabase
-      .from('companies')
-      .update(updatedData)
-      .eq('id', user.company.id)
-
-    if (error) throw new Error(error.message)
-
-    const newUser = { 
-      ...user, 
-      company: { ...user.company, ...updatedData } as CompanyData 
+  const updateCompanyProfile = useCallback(async (updates) => {
+    console.log('🔄 updateCompanyProfile called with:', updates)
+    console.log('🔍 Current user state:', user)
+    
+    if (!user) {
+      console.error('❌ No user found')
+      throw new Error('No user found')
     }
-    setUser(newUser)
-    setCachedUserData(newUser)
-  }, [user, supabase, setCachedUserData])
+  
+    if (!user.company?.id) {
+      console.log('🏢 No company exists, creating new one...')
+      try {
+        const newCompany = await createCompanyProfile(updates)
+        console.log('✅ New company created:', newCompany)
+        return newCompany
+      } catch (error) {
+        console.error('❌ Failed to create company:', error)
+        throw error
+      }
+    }
+  
+    console.log('📝 Updating existing company:', user.company.id)
+  }, [user, supabase, setCachedUserData, createCompanyProfile])
 
   const updateVendorProfile = useCallback(async (updates: Partial<VendorData>) => {
     if (!user || !user.vendor) throw new Error('No vendor profile found')
@@ -826,6 +1043,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateProfile,
       updateCompanyProfile,
+      createCompanyProfile,
       updateVendorProfile,
       updateJobSeekerProfile,
       refreshProfile,
@@ -833,7 +1051,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createJob,
       updateJob,
       deleteJob,
-      getCompanyJobs
+      getCompanyJobs,
+      isCompanyAdmin,
+      getUserCompanyRole
     }}>
       {children}
     </AuthContext.Provider>

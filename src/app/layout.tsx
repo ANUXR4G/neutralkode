@@ -1,12 +1,9 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
 import { AuthProvider } from '../contexts/AuthContext'
 
-const inter = Inter({ subsets: ['latin'] })
-
 export const metadata = {
-  title: 'JobPortal - Find Your Dream Job Today',
-  description: 'Connect with top companies and discover career opportunities that match your skills',
+  title: 'Job Portal',
+  description: 'A comprehensive job portal for companies, job seekers, and vendors',
 }
 
 export default function RootLayout({
@@ -16,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body>
         <AuthProvider>
           {children}
         </AuthProvider>

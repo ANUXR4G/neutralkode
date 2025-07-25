@@ -10,14 +10,14 @@ import {
   Users,
   Eye,
   TrendingUp,
+  User, // Changed from Settings to User
   Search,
   Star,
   Globe,
   Mail,
   Phone,
   X,
-  Filter,
-  Camera
+  Filter
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -87,12 +87,6 @@ export default function CompanyDashboard() {
       // Get company ID from user data
       const companyId = user?.company?.id || user?.profile?.id
 
-      if (!companyId) {
-        console.log('No company ID found')
-        setLoading(false)
-        return
-      }
-
       // 1. Fetch all jobs for this company
       const { data: jobs, error: jobsError } = await supabase
         .from('jobs')
@@ -101,13 +95,10 @@ export default function CompanyDashboard() {
         .order('created_at', { ascending: false })
         .limit(10)
 
-      if (jobsError && jobsError.code !== 'PGRST116') {
-        console.error('Jobs fetch error:', jobsError)
-      }
+      if (jobsError) throw jobsError
 
-      const jobsData = jobs || []
       setRecentJobs(
-        jobsData.map(j => ({
+        (jobs || []).map(j => ({
           id: j.id,
           title: j.title,
           applications: j.applications_count || 0,
@@ -116,52 +107,38 @@ export default function CompanyDashboard() {
       )
 
       // 2. Aggregate stats for this company
-      try {
-        // Active jobs count
-        const { count: activeJobsCount } = await supabase
-          .from('jobs')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .eq('is_active', true)
+      // Active jobs count
+      const { count: activeJobsCount, error: activeJobsError } = await supabase
+        .from('jobs')
+        .select('*', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+      
+      if (activeJobsError) throw activeJobsError
 
-        // Total applications count
-        let totalAppsCount = 0
-        if (jobsData.length > 0) {
-          const { count } = await supabase
-            .from('job_applications')
-            .select('*', { count: 'exact', head: true })
-            .in('job_id', jobsData.map(j => j.id))
-          totalAppsCount = count || 0
-        }
+      // Total applications count
+      const { count: totalAppsCount, error: totalAppsError } = await supabase
+        .from('job_applications')
+        .select('*', { count: 'exact', head: true })
+        .in('job_id', jobs?.map(j => j.id) || [])
+      
+      if (totalAppsError && jobs?.length > 0) throw totalAppsError
 
-        // Hired candidates count
-        let hiredCount = 0
-        if (jobsData.length > 0) {
-          const { count } = await supabase
-            .from('job_applications')
-            .select('*', { count: 'exact', head: true })
-            .in('job_id', jobsData.map(j => j.id))
-            .eq('status', 'accepted')
-          hiredCount = count || 0
-        }
+      // Hired candidates count
+      const { count: hiredCount, error: hiredError } = await supabase
+        .from('job_applications')
+        .select('*', { count: 'exact', head: true })
+        .in('job_id', jobs?.map(j => j.id) || [])
+        .eq('status', 'accepted')
+      
+      if (hiredError && jobs?.length > 0) throw hiredError
 
-        setStats({
-          activeJobs: activeJobsCount || 0,
-          totalApplications: totalAppsCount,
-          hiredCandidates: hiredCount,
-          companyViews: 234, // Placeholder
-        })
-      } catch (statsError) {
-        console.error('Stats fetch error:', statsError)
-        // Set default stats on error
-        setStats({
-          activeJobs: 0,
-          totalApplications: 0,
-          hiredCandidates: 0,
-          companyViews: 234
-        })
-      }
-
+      setStats({
+        activeJobs: activeJobsCount || 0,
+        totalApplications: totalAppsCount || 0,
+        hiredCandidates: hiredCount || 0,
+        companyViews: 234, // Placeholder
+      })
     } catch (error) {
       console.error('Error fetching company data:', error)
     } finally {
@@ -178,22 +155,16 @@ export default function CompanyDashboard() {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('Vendors fetch error:', error)
-        setVendors([])
-        setServiceTypes([])
-      } else {
-        setVendors(vendorsData || [])
-        
-        // Extract unique service types for filter
-        const uniqueServiceTypes = [...new Set(vendorsData?.map(v => v.service_type) || [])]
-        setServiceTypes(uniqueServiceTypes)
-      }
+      if (error) throw error
+
+      setVendors(vendorsData || [])
+      
+      // Extract unique service types for filter
+      const uniqueServiceTypes = [...new Set(vendorsData?.map(v => v.service_type) || [])]
+      setServiceTypes(uniqueServiceTypes)
       
     } catch (error) {
       console.error('Error fetching vendors:', error)
-      setVendors([])
-      setServiceTypes([])
     } finally {
       setVendorsLoading(false)
     }
@@ -276,30 +247,9 @@ export default function CompanyDashboard() {
                   <Plus className="h-4 w-4 mr-2" />
                   Post Job
                 </Link>
-                
-                {/* Profile Icon */}
-                <Link
-                  href="/company/profile"
-                  className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <div className="relative">
-                    {user?.profile?.avatar_url ? (
-                      <img 
-                        src={user.profile.avatar_url} 
-                        alt="Profile" 
-                        className="h-8 w-8 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center">
-                        <span className="text-white text-sm font-medium">
-                          {user?.profile?.full_name?.charAt(0)?.toUpperCase() || 'C'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-sm font-medium">Profile</span>
+                <Link href="/company/profile">
+                <User className="h-6 w-6 text-gray-400 cursor-pointer hover:text-gray-600" />
                 </Link>
-                
                 <button 
                   onClick={signOut} 
                   className="text-gray-600 hover:text-gray-800 px-3 py-1 rounded border border-gray-300 hover:border-gray-400 transition-colors"
@@ -449,7 +399,7 @@ export default function CompanyDashboard() {
               <div className="overflow-y-auto max-h-[60vh]">
                 {vendorsLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="anime-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     <span className="ml-2 text-gray-600">Loading vendors...</span>
                   </div>
                 ) : filteredVendors.length === 0 ? (
