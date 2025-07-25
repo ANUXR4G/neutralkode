@@ -136,10 +136,10 @@ export default function CompanyProfile() {
         console.log('🏢 No company exists, creating one first...')
         const newCompany = await updateCompanyProfile({
           name: formData.companyName.trim(),
-          description: formData.description || undefined,
-          industry: formData.industry || undefined,
-          company_size: formData.companySize || undefined,
-          location: formData.location || undefined,
+          description: formData.description || null,
+          industry: formData.industry || null,
+          company_size: formData.companySize || null,
+          location: formData.location || null,
         })
         companyId = newCompany.id
         console.log('✅ Company created with ID:', companyId)
@@ -235,37 +235,58 @@ export default function CompanyProfile() {
     
     return true
   }
+
   const handleSave = async () => {
     if (!user) {
       console.error('No user found')
       showError('No user found')
       return
     }
-  
+
+    // Validate form before proceeding
+    if (!validateForm()) {
+      return
+    }
+
     try {
       setSaving(true)
       setError(null)
       
       console.log('🔄 Starting save with user:', user.profile.id)
       
-      // Test 1: Update profile only
+      // Update profile information
       console.log('📝 Updating profile...')
       await updateProfile({
-        full_name: formData.fullName.trim() || 'Test User',
+        full_name: formData.fullName.trim(),
+        phone: formData.phone.trim() || null,
+        location: formData.userLocation.trim() || null,
+        bio: formData.bio.trim() || null,
       })
       console.log('✅ Profile updated successfully')
       
-      // Test 2: Update/create company
+      // Update/create company information
       console.log('🏢 Updating company...')
-      const result = await updateCompanyProfile({
-        name: formData.companyName.trim() || 'Test Company',
-      })
+      const companyUpdates = {
+        name: formData.companyName.trim(),
+        description: formData.description.trim() || null,
+        website: formData.website.trim() || null,
+        industry: formData.industry.trim() || null,
+        company_size: formData.companySize || null,
+        location: formData.location.trim() || null,
+        headquarters: formData.headquarters.trim() || null,
+        founded_year: formData.foundedYear ? parseInt(formData.foundedYear) : null,
+        company_culture: formData.companyCulture.trim() || null,
+        employee_count_range: formData.employeeCountRange || null,
+        benefits: formData.benefits
+      }
+      
+      const result = await updateCompanyProfile(companyUpdates)
       console.log('✅ Company updated successfully:', result)
       
       showSuccess('Profile saved successfully!')
       setEditing(false)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Save failed:', error)
       console.error('Error details:', {
         message: error.message,
@@ -277,7 +298,6 @@ export default function CompanyProfile() {
       setSaving(false)
     }
   }
-  
 
   const cancelEdit = () => {
     setEditing(false)
