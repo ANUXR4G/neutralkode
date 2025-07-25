@@ -6,10 +6,66 @@ import Link from 'next/link'
 import { useAuth } from '../../../contexts/AuthContext'
 import { Eye, EyeOff, Mail, Lock, User, Building, Store } from 'lucide-react'
 
+// Updated interface to match the AuthContext
 interface SignInResult {
   error?: string
   user?: {
-    role: string
+    profile: {
+      id: string
+      email: string
+      full_name: string
+      role: 'job_seeker' | 'company' | 'vendor'
+      phone?: string
+      location?: string
+      bio?: string
+      avatar_url?: string
+      resume_url?: string
+      created_at?: string
+      updated_at?: string
+    }
+    company?: {
+      id: string
+      name: string
+      description?: string
+      website?: string
+      logo_url?: string
+      industry?: string
+      company_size?: string
+      headquarters?: string
+      position?: string
+      is_admin?: boolean
+    }
+    vendor?: {
+      id: string
+      name: string
+      service_type: string
+      description?: string
+      contact_email: string
+      contact_phone?: string
+      website?: string
+      specializations?: string[]
+      years_experience?: number
+      portfolio_url?: string
+      certifications?: string[]
+      pricing_model?: string
+      availability_hours?: string
+      position?: string
+    }
+    job_seeker?: {
+      resume_url?: string
+      skills?: string[]
+      experience_years?: number
+      current_salary?: number
+      expected_salary?: number
+      linkedin_url?: string
+      portfolio_url?: string
+      education?: any
+      experience?: any
+      certifications?: string[]
+      languages?: string[]
+      preferred_job_types?: string[]
+      work_authorization?: string
+    }
   }
 }
 
@@ -23,6 +79,8 @@ export default function Login() {
   const router = useRouter()
 
   const redirectByRole = (role: string): boolean => {
+    console.log('🔄 Redirecting user with role:', role)
+    
     switch (role) {
       case 'job_seeker':
       case 'job-seeker':
@@ -36,6 +94,7 @@ export default function Login() {
         router.push('/vendor/dashboard')
         return true
       default:
+        console.error('❌ Unknown role:', role)
         return false
     }
   }
@@ -44,20 +103,55 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    
+    console.log('🚀 Starting login process...')
+    
     try {
       const result: SignInResult = await signIn(email, password)
-      console.log('signIn result:', result)
+      
+      console.log('📋 SignIn result:', result)
+      
       if (result?.error) {
+        console.error('❌ Login error:', result.error)
         setError(result.error)
-      } else if (result?.user?.role) {
-        const redirected = redirectByRole(result.user.role)
+      } else if (result?.user?.profile?.role) {
+        console.log('✅ Login successful for user:', {
+          id: result.user.profile.id,
+          name: result.user.profile.full_name,
+          role: result.user.profile.role,
+          email: result.user.profile.email
+        })
+
+        // Log role-specific data
+        if (result.user.profile.role === 'company' && result.user.company) {
+          console.log('🏢 Company data:', {
+            name: result.user.company.name,
+            position: result.user.company.position,
+            is_admin: result.user.company.is_admin
+          })
+        } else if (result.user.profile.role === 'vendor' && result.user.vendor) {
+          console.log('🔧 Vendor data:', {
+            name: result.user.vendor.name,
+            service_type: result.user.vendor.service_type,
+            position: result.user.vendor.position
+          })
+        } else if (result.user.profile.role === 'job_seeker' && result.user.job_seeker) {
+          console.log('👤 Job seeker data:', {
+            skills: result.user.job_seeker.skills,
+            experience_years: result.user.job_seeker.experience_years
+          })
+        }
+
+        const redirected = redirectByRole(result.user.profile.role)
         if (!redirected) {
-          setError(`Unknown user role: ${result.user.role}`)
+          setError(`Unknown user role: ${result.user.profile.role}`)
         }
       } else {
-        setError('Invalid credentials or missing user role.')
+        console.error('❌ Invalid response structure:', result)
+        setError('Invalid credentials or missing user data.')
       }
     } catch (err: unknown) {
+      console.error('💥 Login exception:', err)
       const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.'
       setError(errorMessage)
     } finally {
@@ -124,7 +218,12 @@ export default function Login() {
               <form className="space-y-6" onSubmit={handleSubmit}>
                 {error && (
                   <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">
-                    {error}
+                    <div className="flex items-center">
+                      <div className="mr-2">⚠️</div>
+                      <div>
+                        <strong>Login Failed:</strong> {error}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -219,7 +318,21 @@ export default function Login() {
                 </div>
               </form>
 
-              {/* Social Login Options (optional placeholders) */}
+              {/* Debug Information (remove in production) */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="mt-4 p-3 bg-gray-100 rounded-md">
+                  <details className="text-xs text-gray-600">
+                    <summary className="cursor-pointer font-medium">Debug Info</summary>
+                    <div className="mt-2 space-y-1">
+                      <div>Email: {email}</div>
+                      <div>Loading: {loading.toString()}</div>
+                      <div>Error: {error || 'None'}</div>
+                    </div>
+                  </details>
+                </div>
+              )}
+
+              {/* Social Login Options */}
               <div className="mt-6">
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -230,11 +343,19 @@ export default function Login() {
                   </div>
                 </div>
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  <button className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                  <button 
+                    type="button"
+                    className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    disabled={loading}
+                  >
                     <span className="sr-only">Sign in with Google</span>
                     Google
                   </button>
-                  <button className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                  <button 
+                    type="button"
+                    className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                    disabled={loading}
+                  >
                     <span className="sr-only">Sign in with LinkedIn</span>
                     LinkedIn
                   </button>
