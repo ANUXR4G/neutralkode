@@ -7,17 +7,26 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { User, Mail, Phone, Compass, FileText, UploadCloud, ArrowLeft, Settings, CheckCircle, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
+interface FormData {
+  full_name: string
+  phone: string
+  location: string
+  bio: string
+  avatar_url: string
+  resume_url: string
+}
+
 export default function ProfilePage() {
   const { user, profile, updateProfile, refreshProfile, loading: authLoading, initialised, signOut } = useAuth()
-  const [edit, setEdit] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [edit, setEdit] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
+  const [success, setSuccess] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClientComponentClient()
   const router = useRouter()
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<FormData>({
     full_name: '',
     phone: '',
     location: '',
@@ -195,7 +204,10 @@ export default function ProfilePage() {
     )
   }
 
+  // FIXED: Added null check for profile
   const completionPercentage = () => {
+    if (!profile) return 0
+    
     const fields = [
       profile.full_name,
       (profile as any).phone,
@@ -206,6 +218,9 @@ export default function ProfilePage() {
     const completedFields = fields.filter(field => field && field.length > 0).length
     return Math.round((completedFields / fields.length) * 100)
   }
+
+  // Since we already check for profile above, we can safely use it here
+  const currentProfile = profile!
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -242,7 +257,7 @@ export default function ProfilePage() {
                 <RefreshCw className="h-4 w-4 text-gray-600" />
               </button>
               <div className="text-sm text-gray-600">
-                Role: <span className="font-medium capitalize">{profile.role}</span>
+                Role: <span className="font-medium capitalize">{currentProfile.role}</span>
               </div>
               <button
                 onClick={handleSignOut}
@@ -306,10 +321,10 @@ export default function ProfilePage() {
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
-                  {profile.full_name || 'Complete Your Name'}
+                  {currentProfile.full_name || 'Complete Your Name'}
                 </h2>
-                <p className="text-gray-600">{profile.email}</p>
-                <p className="text-sm text-gray-500 capitalize">{profile.role}</p>
+                <p className="text-gray-600">{currentProfile.email}</p>
+                <p className="text-sm text-gray-500 capitalize">{currentProfile.role}</p>
               </div>
             </div>
             {!edit && (
@@ -357,7 +372,7 @@ export default function ProfilePage() {
                 <input
                   type="email"
                   className="pl-10 pr-4 py-3 w-full border rounded-lg bg-gray-50 cursor-not-allowed text-black"
-                  value={profile.email}
+                  value={currentProfile.email}
                   disabled
                 />
               </div>
@@ -507,12 +522,12 @@ export default function ProfilePage() {
                   disabled={loading}
                   onClick={() => {
                     setForm({
-                      full_name: profile.full_name || '',
-                      phone: (profile as any).phone || '',
-                      location: (profile as any).location || '',
-                      bio: (profile as any).bio || '',
-                      avatar_url: (profile as any).avatar_url || '',
-                      resume_url: (profile as any).resume_url || ''
+                      full_name: currentProfile.full_name || '',
+                      phone: (currentProfile as any).phone || '',
+                      location: (currentProfile as any).location || '',
+                      bio: (currentProfile as any).bio || '',
+                      avatar_url: (currentProfile as any).avatar_url || '',
+                      resume_url: (currentProfile as any).resume_url || ''
                     })
                     if (isProfileComplete()) {
                       setEdit(false)

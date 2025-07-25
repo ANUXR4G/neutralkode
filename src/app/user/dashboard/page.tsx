@@ -10,16 +10,41 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 
+interface Company {
+  name: string
+  logo_url?: string
+  is_verified: boolean
+}
+
+interface Job {
+  id: number
+  title: string
+  location: string
+  created_at: string
+  is_active: boolean
+  company?: Company
+  description?: string
+  salary_range?: string
+  job_type?: string
+}
+
+interface Stats {
+  applications: number
+  profileViews: number
+  interviews: number
+  savedJobs: number
+}
+
 export default function UserDashboard() {
   const { user, profile, signOut } = useAuth()
-  const [jobs, setJobs] = useState([])
-  const [stats, setStats] = useState({
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [stats, setStats] = useState<Stats>({
     applications: 0,
     profileViews: 0,
     interviews: 0,
     savedJobs: 0
   })
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
     if (user) {
@@ -30,7 +55,7 @@ export default function UserDashboard() {
   const fetchDashboardData = async () => {
     try {
       // Fetch recent jobs
-      const { data: jobsData } = await supabase
+      const { data: jobsData, error } = await supabase
         .from('jobs')
         .select(`
           *,
@@ -40,9 +65,13 @@ export default function UserDashboard() {
         .order('created_at', { ascending: false })
         .limit(6)
 
+      if (error) {
+        console.error('Error fetching jobs:', error)
+      }
+
       setJobs(jobsData || [])
 
-      // Mock stats for now
+      // Mock stats for now - replace with actual queries
       setStats({
         applications: 12,
         profileViews: 45,
@@ -137,9 +166,9 @@ export default function UserDashboard() {
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : jobs.length > 0 ? (
                 <div className="space-y-4">
-                  {jobs.map((job: any) => (
+                  {jobs.map((job) => (
                     <div key={job.id} className="border rounded-lg p-4 hover:border-blue-300 transition-colors">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -165,6 +194,11 @@ export default function UserDashboard() {
                       </div>
                     </div>
                   ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No jobs found. Check back later!</p>
                 </div>
               )}
             </div>

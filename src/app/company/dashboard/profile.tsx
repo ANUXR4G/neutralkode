@@ -4,21 +4,40 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import ProtectedRoute from '../../../components/ProtectedRoute'
 import { supabase } from '../../../lib/supabase'
-import { 
-  Plus, Briefcase, Users, Eye, TrendingUp, Settings 
+import {
+  Plus,
+  Briefcase,
+  Users,
+  Eye,
+  TrendingUp,
+  Settings,
 } from 'lucide-react'
 import Link from 'next/link'
 
+interface Job {
+  id: number
+  title: string
+  applications: number
+  status: 'active' | 'closed' | string
+}
+
+interface Stats {
+  activeJobs: number
+  totalApplications: number
+  hiredCandidates: number
+  companyViews: number
+}
+
 export default function CompanyDashboard() {
-  const { user, profile, signOut } = useAuth()
-  const [stats, setStats] = useState({
+  const { user, signOut } = useAuth()
+  const [stats, setStats] = useState<Stats>({
     activeJobs: 0,
     totalApplications: 0,
     hiredCandidates: 0,
-    companyViews: 0
+    companyViews: 0,
   })
-  const [recentJobs, setRecentJobs] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [recentJobs, setRecentJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
     if (user) {
@@ -28,24 +47,42 @@ export default function CompanyDashboard() {
 
   const fetchCompanyData = async () => {
     try {
-      // Mock data - replace with actual queries
+      // EXAMPLE: replace with your real Supabase queries
+      // const { data: jobs, error } = await supabase
+      //   .from('jobs')
+      //   .select('id,title,applications,status')
+      //   .eq('company_id', user.id)
+      // if (error) throw error
+      // setRecentJobs(jobs)
+
+      // and similarly for stats...
+
+      // -- mock data for now --
       setStats({
         activeJobs: 5,
         totalApplications: 48,
         hiredCandidates: 12,
-        companyViews: 234
+        companyViews: 234,
       })
-
       setRecentJobs([
         { id: 1, title: 'Frontend Developer', applications: 12, status: 'active' },
         { id: 2, title: 'Backend Developer', applications: 8, status: 'active' },
       ])
-
     } catch (error) {
       console.error('Error fetching company data:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <ProtectedRoute allowedRoles={['employer']}>
+        <div className="min-h-screen flex items-center justify-center">
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </ProtectedRoute>
+    )
   }
 
   return (
@@ -60,7 +97,7 @@ export default function CompanyDashboard() {
                 <p className="text-gray-600">Manage your hiring process</p>
               </div>
               <div className="flex items-center space-x-4">
-                <Link 
+                <Link
                   href="/company/jobs/new"
                   className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center"
                 >
@@ -124,11 +161,16 @@ export default function CompanyDashboard() {
             </div>
             <div className="p-6">
               <div className="space-y-4">
-                {recentJobs.map((job: any) => (
-                  <div key={job.id} className="flex justify-between items-center border-b pb-4">
+                {recentJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="flex justify-between items-center border-b pb-4"
+                  >
                     <div>
                       <h3 className="font-semibold">{job.title}</h3>
-                      <p className="text-sm text-gray-600">{job.applications} applications</p>
+                      <p className="text-sm text-gray-600">
+                        {job.applications} applications
+                      </p>
                     </div>
                     <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
                       {job.status}
