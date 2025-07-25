@@ -11,6 +11,22 @@ export default function HomePage() {
   const [location, setLocation] = useState('')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
+  // Function to get role-specific dashboard URL
+  const getDashboardUrl = () => {
+    if (!profile?.role) return '/dashboard' // fallback
+    
+    switch (profile.role) {
+      case 'job_seeker':
+        return '/user/dashboard'
+      case 'employer':
+        return '/company/dashboard'
+      case 'vendor':
+        return '/vendor/dashboard'
+      default:
+        return '/dashboard' // fallback for unknown roles
+    }
+  }
+
   const handleSearch = () => {
     if (searchTerm.trim() || location.trim()) {
       const params = new URLSearchParams()
@@ -125,7 +141,7 @@ export default function HomePage() {
                 <div className="flex items-center space-x-4">
                   <span className="text-gray-700">Welcome, {profile.full_name}</span>
                   <Link
-                    href="/dashboard"
+                    href={getDashboardUrl()}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium"
                   >
                     Dashboard
@@ -176,7 +192,7 @@ export default function HomePage() {
                 <Link href="/contact" className="block px-3 py-2 text-gray-700 hover:text-blue-600">Contact</Link>
                 {user && profile ? (
                   <>
-                    <Link href="/dashboard" className="block px-3 py-2 text-gray-700 hover:text-blue-600">Dashboard</Link>
+                    <Link href={getDashboardUrl()} className="block px-3 py-2 text-gray-700 hover:text-blue-600">Dashboard</Link>
                     <button onClick={signOut} className="block px-3 py-2 text-gray-700 hover:text-blue-600 w-full text-left">Sign Out</button>
                   </>
                 ) : (
@@ -253,7 +269,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Rest of the component remains the same... */}
       {/* Stats Section */}
       <section className="py-16 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -443,7 +458,7 @@ export default function HomePage() {
               </>
             ) : (
               <Link
-                href="/dashboard"
+                href={getDashboardUrl()}
                 className="bg-white text-blue-600 px-8 py-3 rounded-lg hover:bg-gray-100 transition-colors font-semibold"
               >
                 Go to Dashboard
