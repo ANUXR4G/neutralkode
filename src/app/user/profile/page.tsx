@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { User, Mail, Phone, Compass, FileText, UploadCloud, ArrowLeft, Settings, CheckCircle, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { LoaderCircle } from "lucide-react"
 
 interface FormData {
   full_name: string
@@ -32,6 +33,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState<string>('')
+  const [bypassAuth, setBypassAuth] = useState<boolean>(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClientComponentClient()
   const router = useRouter()
@@ -73,13 +75,13 @@ export default function ProfilePage() {
     }
   }, [profile])
 
-  // FIXED: Only redirect after initialization is complete
+  // Modified: Only redirect if not bypassing auth
   useEffect(() => {
-    if (initialised && !authLoading && !user) {
+    if (!bypassAuth && initialised && !authLoading && !user) {
       console.log('Redirecting to login - no user found after initialization')
       router.push('/auth/login')
     }
-  }, [initialised, authLoading, user, router])
+  }, [initialised, authLoading, user, router, bypassAuth])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -181,30 +183,27 @@ export default function ProfilePage() {
     }
   }
 
-  // Show loading only during initial authentication check
-  if (!initialised || (authLoading && !user)) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-600">Loading your profile...</div>
-        </div>
-      </div>
-    )
+  // Modified: Bypass auth check when user clicks reload
+  const handleReload = () => {
+    setBypassAuth(true)
+    window.location.reload()
   }
 
-  // Show error if no profile after initialization
-  if (initialised && !profile) {
+  // Show loading only during initial authentication check (unless bypassing)
+
+
+  // Modified: Show error with bypass option
+  if (!bypassAuth && initialised && !profile) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white p-8 rounded-lg shadow-md text-center">
           <div className="text-lg text-red-600 mb-4">Unable to load profile</div>
           <div className="space-y-2">
             <button
-              onClick={() => window.location.reload()}
+              onClick={handleReload}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg mr-2"
             >
-              Refresh Page
+              View Profile Anyway
             </button>
             <button
               onClick={() => router.push('/auth/login')}
@@ -218,9 +217,14 @@ export default function ProfilePage() {
     )
   }
 
-  // FIXED: Added null check for profile
+  // Modified: Handle case when bypassing auth but no profile data
   const completionPercentage = () => {
-    if (!profile) return 0
+    if (!profile && !bypassAuth) return 0
+    
+    if (bypassAuth && !profile) {
+      // Return a default percentage when bypassing auth
+      return 0
+    }
     
     const extendedProfile = profile as ExtendedProfile
     const fields = [
@@ -234,11 +238,31 @@ export default function ProfilePage() {
     return Math.round((completedFields / fields.length) * 100)
   }
 
-  // Since we already check for profile above, we can safely use it here
-  const currentProfile = profile as ExtendedProfile
+  // Modified: Handle case when profile might be null due to bypass
+  const currentProfile = (profile as ExtendedProfile) || {
+    full_name: 'Demo User',
+    email: 'demo@example.com',
+    role: 'job_seeker',
+    phone: '',
+    location: '',
+    bio: '',
+    avatar_url: '',
+    resume_url: ''
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Modified: Show bypass notice */}
+      {bypassAuth && !profile && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-3">
+          <div className="max-w-4xl mx-auto">
+            <p className="text-yellow-800 text-sm">
+              <strong>Demo Mode:</strong> Viewing profile without authentication. Some features may be limited.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-4xl mx-auto px-6 py-4">
@@ -264,22 +288,26 @@ export default function ProfilePage() {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              <button
-                onClick={handleRefresh}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Refresh Profile"
-              >
-                <RefreshCw className="h-4 w-4 text-gray-600" />
-              </button>
+              {!bypassAuth && (
+                <button
+                  onClick={handleRefresh}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Refresh Profile"
+                >
+                  <RefreshCw className="h-4 w-4 text-gray-600" />
+                </button>
+              )}
               <div className="text-sm text-gray-600">
                 Role: <span className="font-medium capitalize">{currentProfile.role}</span>
               </div>
-              <button
-                onClick={handleSignOut}
-                className="text-red-600 hover:text-red-700 text-sm font-medium"
-              >
-                Sign Out
-              </button>
+              {!bypassAuth && (
+                <button
+                  onClick={handleSignOut}
+                  className="text-red-600 hover:text-red-700 text-sm font-medium"
+                >
+                  Sign Out
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -318,7 +346,7 @@ export default function ProfilePage() {
                     <User className="h-10 w-10 text-white" />
                   </div>
                 )}
-                {edit && (
+                {edit && !bypassAuth && (
                   <label className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-full cursor-pointer transition-colors shadow-lg">
                     <UploadCloud className="h-4 w-4" />
                     <input
@@ -342,7 +370,7 @@ export default function ProfilePage() {
                 <p className="text-sm text-gray-500 capitalize">{currentProfile.role}</p>
               </div>
             </div>
-            {!edit && (
+            {!edit && !bypassAuth && (
               <button
                 type="button"
                 className="flex items-center space-x-2 bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg transition-colors"
@@ -367,10 +395,10 @@ export default function ProfilePage() {
                   type="text"
                   required
                   className={`pl-10 pr-4 py-3 w-full border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-black ${
-                    !edit ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
+                    !edit || bypassAuth ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
                   }`}
                   value={form.full_name}
-                  disabled={!edit}
+                  disabled={!edit || bypassAuth}
                   onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                   placeholder="Enter your full name"
                 />
@@ -404,10 +432,10 @@ export default function ProfilePage() {
                 <input
                   type="tel"
                   className={`pl-10 pr-4 py-3 w-full border rounded-lg focus:ring-2 text-black focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                    !edit ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
+                    !edit || bypassAuth ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
                   }`}
                   value={form.phone}
-                  disabled={!edit}
+                  disabled={!edit || bypassAuth}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                   placeholder="Enter your phone number"
                 />
@@ -424,10 +452,10 @@ export default function ProfilePage() {
                 <input
                   type="text"
                   className={`pl-10 pr-4 py-3 w-full border rounded-lg focus:ring-2 text-black focus:ring-blue-500 focus:border-blue-500 transition-colors ${
-                    !edit ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
+                    !edit || bypassAuth ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
                   }`}
                   value={form.location}
-                  disabled={!edit}
+                  disabled={!edit || bypassAuth}
                   onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
                   placeholder="Enter your location"
                 />
@@ -441,10 +469,10 @@ export default function ProfilePage() {
               </label>
               <textarea
                 className={`w-full border rounded-lg py-3 px-4 focus:ring-2 text-black focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none ${
-                  !edit ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
+                  !edit || bypassAuth ? 'bg-gray-50 cursor-not-allowed' : 'bg-white'
                 }`}
                 rows={4}
-                disabled={!edit}
+                disabled={!edit || bypassAuth}
                 value={form.bio}
                 onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
                 placeholder="Tell us about yourself..."
@@ -468,7 +496,7 @@ export default function ProfilePage() {
                       <FileText className="h-5 w-5 mr-2" />
                       View Current Resume
                     </a>
-                    {edit && (
+                    {edit && !bypassAuth && (
                       <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition-colors">
                         <span className="text-sm">Update Resume</span>
                         <input
@@ -487,7 +515,7 @@ export default function ProfilePage() {
                   <div className="text-center">
                     <FileText className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm mb-2">No resume uploaded</p>
-                    {edit && (
+                    {edit && !bypassAuth && (
                       <label className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors inline-block">
                         <span className="text-sm">Upload Resume</span>
                         <input
@@ -522,7 +550,7 @@ export default function ProfilePage() {
             )}
 
             {/* Action Buttons */}
-            {edit && (
+            {edit && !bypassAuth && (
               <div className="flex space-x-4 pt-6 border-t">
                 <button
                   type="submit"
@@ -553,6 +581,19 @@ export default function ProfilePage() {
                   }}
                 >
                   Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Show login prompt for bypassed users */}
+            {bypassAuth && (
+              <div className="flex space-x-4 pt-6 border-t">
+                <button
+                  type="button"
+                  onClick={() => router.push('/auth/login')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-8 py-3 rounded-lg transition-colors"
+                >
+                  Login to Edit Profile
                 </button>
               </div>
             )}
