@@ -1,6 +1,7 @@
 'use client'
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import type { User } from '@supabase/auth-helpers-nextjs'
 
 // Profile structure
 type Profile = {
@@ -27,13 +28,24 @@ type SignUpData = {
   serviceType?: string
 }
 
+interface SignInResult {
+  error?: string
+  user?: Profile
+}
+
+interface SignUpResult {
+  success: boolean
+  message?: string
+  user?: Profile | null
+}
+
 type AuthContextType = {
   user: Profile | null
   profile: Profile | null
   loading: boolean
-  initialised: boolean  // NEW: Tracks if first auth check is complete
-  signIn: (email: string, password: string) => Promise<any>
-  signUp: (email: string, password: string, userData: SignUpData) => Promise<any>
+  initialised: boolean
+  signIn: (email: string, password: string) => Promise<SignInResult>
+  signUp: (email: string, password: string, userData: SignUpData) => Promise<SignUpResult>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -44,13 +56,13 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [initialised, setInitialised] = useState(false)  // NEW: Initialization flag
+  const [initialised, setInitialised] = useState(false)
   const supabase = createClientComponentClient()
 
-  const createProfile = async (authUser: any, userData: SignUpData) => {
+  const createProfile = useCallback(async (authUser: User, userData: SignUpData): Promise<Profile> => {
     const profileData = {
       id: authUser.id,
-      email: authUser.email,
+      email: authUser.email || '',
       full_name: userData.fullName,
       role: userData.role,
       phone: userData.phone || null,
@@ -71,10 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error
     }
 
-    return data
-  }
+    return data as Profile
+  }, [supabase])
 
-  const fetchProfile = async (authUser: any) => {
+  const fetchProfile = useCallback(async (authUser: User): Promise<Profile> => {
     console.log('🔍 Fetching profile for user:', authUser.id)
     
     const { data: profile, error } = await supabase
@@ -86,7 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error && error.code === 'PGRST116') {
       // Profile doesn't exist, create a basic one
       console.log('🆕 Profile not found, creating basic profile...')
-      const userData = {
+      const userData: SignUpData = {
         fullName: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || '',
         role: authUser.user_metadata?.role || 'job_seeker',
         phone: authUser.user_metadata?.phone || '',
@@ -99,11 +111,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw error
     }
 
-    return profile
-  }
+    return profile as Profile
+  }, [supabase, createProfile])
 
-  // NEW: Initial authentication check
-  const initializeAuth = async () => {
+  // Initial authentication check
+  const initializeAuth = useCallback(async () => {
     console.log('🚀 Initializing auth...')
     setLoading(true)
     
@@ -133,12 +145,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       console.log('🏁 Auth initialization complete')
       setLoading(false)
-      setInitialised(true)  // NEW: Mark as initialized
+      setInitialised(true)
     }
-  }
+  }, [supabase.auth, fetchProfile])
 
   useEffect(() => {
-    // NEW: Initialize auth on mount
+    // Initialize auth on mount
     initializeAuth()
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -166,10 +178,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       listener.subscription.unsubscribe()
     }
-  }, [])
+  }, [initializeAuth, fetchProfile, supabase.auth])
 
-  // FIXED: refreshProfile function - doesn't trigger loading states that cause redirects
-  const refreshProfile = async () => {
+  // refreshProfile function - doesn't trigger loading states that cause redirects
+  const refreshProfile = useCallback(async () => {
     try {
       console.log('🔄 Refreshing profile...')
       
@@ -188,9 +200,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('❌ Error refreshing profile:', error)
     }
-  }
+  }, [supabase.auth, user, fetchProfile])
 
-  const updateProfile = async (updates: Partial<Profile>) => {
+  const updateProfile = useCallback(async (updates: Partial<Profile>) => {
     if (!user) throw new Error('No user found')
 
     const updatedData = {
@@ -208,9 +220,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setUser(prev => prev ? { ...prev, ...updatedData } : null)
-  }
+  }, [user, supabase])
 
-  const signUp = async (email: string, password: string, userData: SignUpData) => {
+  const signUp = useCallback(async (email: string, password: string, userData: SignUpData): Promise<SignUpResult> => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -248,13 +260,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       return { success: true, user: null }
-    } catch (error: any) {
-      throw error
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred'
+      throw new Error(errorMessage)
     }
-  }
+  }, [supabase.auth, createProfile])
 
-  // Your existing signIn function - UNCHANGED
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string): Promise<SignInResult> => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
@@ -269,22 +281,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await fetchProfile(data.user)
       setUser(profile)
       return { user: profile }
-    } catch (error: any) {
-      return { error: error.message || 'Profile not found.' }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Profile not found.'
+      return { error: errorMessage }
     }
-  }
+  }, [supabase.auth, fetchProfile])
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut()
     setUser(null)
-  }
+  }, [supabase.auth])
 
   return (
     <AuthContext.Provider value={{
       user,
       profile: user,
       loading,
-      initialised,  // NEW: Expose initialization state
+      initialised,
       signIn,
       signUp,
       signOut,

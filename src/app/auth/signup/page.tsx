@@ -6,6 +6,24 @@ import Link from 'next/link'
 import { useAuth } from '../../../contexts/AuthContext'
 import { Eye, EyeOff, Mail, Lock, User, Phone, Building, Store, CheckCircle } from 'lucide-react'
 
+interface SignUpData {
+  fullName: string
+  role: string
+  phone: string
+  companyName: string
+  serviceType: string
+}
+
+interface SignUpResult {
+  success: boolean
+  message?: string
+  user?: {
+    id: string
+    email: string
+    role: string
+  }
+}
+
 export default function SignUp() {
   const [formData, setFormData] = useState({
     fullName: '',
@@ -110,7 +128,7 @@ export default function SignUp() {
     }
 
     try {
-      const result = await signUp(formData.email, formData.password, {
+      const result: SignUpResult = await signUp(formData.email, formData.password, {
         fullName: formData.fullName,
         role: formData.role,
         phone: formData.phone,
@@ -133,8 +151,9 @@ export default function SignUp() {
           setSuccess('Account created successfully! Please check your email to confirm your account.')
         }
       }
-    } catch (error: any) {
-      setError(error?.message || 'Signup failed. Please try again.')
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Signup failed. Please try again.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -237,7 +256,7 @@ export default function SignUp() {
               {selectedRoleData && (
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg">
                   <h4 className="font-medium text-gray-900 mb-3">
-                    What you'll get as a {selectedRoleData.label}:
+                    What you&apos;ll get as a {selectedRoleData.label}:
                   </h4>
                   <div className="space-y-2">
                     {selectedRoleData.features.map((feature, idx) => (

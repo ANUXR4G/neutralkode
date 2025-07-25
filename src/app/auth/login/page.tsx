@@ -6,6 +6,13 @@ import Link from 'next/link'
 import { useAuth } from '../../../contexts/AuthContext'
 import { Eye, EyeOff, Mail, Lock, User, Building, Store } from 'lucide-react'
 
+interface SignInResult {
+  error?: string
+  user?: {
+    role: string
+  }
+}
+
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -15,7 +22,7 @@ export default function Login() {
   const { signIn } = useAuth()
   const router = useRouter()
 
-  const redirectByRole = (role: string) => {
+  const redirectByRole = (role: string): boolean => {
     switch (role) {
       case 'job_seeker':
       case 'job-seeker':
@@ -38,7 +45,7 @@ export default function Login() {
     setLoading(true)
     setError('')
     try {
-      const result = await signIn(email, password)
+      const result: SignInResult = await signIn(email, password)
       console.log('signIn result:', result)
       if (result?.error) {
         setError(result.error)
@@ -50,8 +57,9 @@ export default function Login() {
       } else {
         setError('Invalid credentials or missing user role.')
       }
-    } catch (err: any) {
-      setError(err?.message || 'Login failed. Please try again.')
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -105,7 +113,7 @@ export default function Login() {
               </Link>
               <h2 className="mt-6 text-3xl font-bold text-gray-900">Welcome back</h2>
               <p className="mt-2 text-sm text-gray-600">
-                Don’t have an account?{' '}
+                Don't have an account?{' '}
                 <Link href="/auth/signup" className="font-medium text-blue-600 hover:text-blue-500">
                   Sign up for free
                 </Link>

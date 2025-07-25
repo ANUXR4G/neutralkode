@@ -1,4 +1,3 @@
-// app/profile/page.tsx
 'use client'
 
 import React, { useState, useRef, useEffect } from 'react'
@@ -14,6 +13,17 @@ interface FormData {
   bio: string
   avatar_url: string
   resume_url: string
+}
+
+interface ExtendedProfile {
+  full_name: string
+  email: string
+  role: string
+  phone?: string
+  location?: string
+  bio?: string
+  avatar_url?: string
+  resume_url?: string
 }
 
 export default function ProfilePage() {
@@ -38,21 +48,23 @@ export default function ProfilePage() {
   // Check if profile is complete
   const isProfileComplete = () => {
     if (!profile) return false
-    return !!(profile.full_name && 
-             (profile as any).phone && 
-             (profile as any).location && 
-             (profile as any).bio)
+    const extendedProfile = profile as ExtendedProfile
+    return !!(extendedProfile.full_name && 
+             extendedProfile.phone && 
+             extendedProfile.location && 
+             extendedProfile.bio)
   }
 
   useEffect(() => {
     if (profile) {
+      const extendedProfile = profile as ExtendedProfile
       setForm({
-        full_name: profile.full_name || '',
-        phone: (profile as any).phone || '',
-        location: (profile as any).location || '',
-        bio: (profile as any).bio || '',
-        avatar_url: (profile as any).avatar_url || '',
-        resume_url: (profile as any).resume_url || ''
+        full_name: extendedProfile.full_name || '',
+        phone: extendedProfile.phone || '',
+        location: extendedProfile.location || '',
+        bio: extendedProfile.bio || '',
+        avatar_url: extendedProfile.avatar_url || '',
+        resume_url: extendedProfile.resume_url || ''
       })
       
       if (!isProfileComplete()) {
@@ -78,8 +90,9 @@ export default function ProfilePage() {
       await updateProfile(form)
       setSuccess('Profile updated successfully!')
       setEdit(false)
-    } catch (error: any) {
-      setError(error.message || 'Failed to update profile')
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update profile'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -162,8 +175,9 @@ export default function ProfilePage() {
       setSuccess('')
       await refreshProfile()
       setSuccess('Profile refreshed successfully!')
-    } catch (error: any) {
-      setError('Failed to refresh profile: ' + error.message)
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to refresh profile'
+      setError('Failed to refresh profile: ' + errorMessage)
     }
   }
 
@@ -208,19 +222,20 @@ export default function ProfilePage() {
   const completionPercentage = () => {
     if (!profile) return 0
     
+    const extendedProfile = profile as ExtendedProfile
     const fields = [
-      profile.full_name,
-      (profile as any).phone,
-      (profile as any).location,
-      (profile as any).bio,
-      (profile as any).avatar_url
+      extendedProfile.full_name,
+      extendedProfile.phone,
+      extendedProfile.location,
+      extendedProfile.bio,
+      extendedProfile.avatar_url
     ]
     const completedFields = fields.filter(field => field && field.length > 0).length
     return Math.round((completedFields / fields.length) * 100)
   }
 
   // Since we already check for profile above, we can safely use it here
-  const currentProfile = profile!
+  const currentProfile = profile as ExtendedProfile
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -521,13 +536,14 @@ export default function ProfilePage() {
                   className="bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium px-8 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={loading}
                   onClick={() => {
+                    const extendedProfile = currentProfile as ExtendedProfile
                     setForm({
-                      full_name: currentProfile.full_name || '',
-                      phone: (currentProfile as any).phone || '',
-                      location: (currentProfile as any).location || '',
-                      bio: (currentProfile as any).bio || '',
-                      avatar_url: (currentProfile as any).avatar_url || '',
-                      resume_url: (currentProfile as any).resume_url || ''
+                      full_name: extendedProfile.full_name || '',
+                      phone: extendedProfile.phone || '',
+                      location: extendedProfile.location || '',
+                      bio: extendedProfile.bio || '',
+                      avatar_url: extendedProfile.avatar_url || '',
+                      resume_url: extendedProfile.resume_url || ''
                     })
                     if (isProfileComplete()) {
                       setEdit(false)
